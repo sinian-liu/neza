@@ -1,41 +1,48 @@
 #!/bin/bash
 
 # 更新系统
-echo "更新系统..."
-sudo apt update && sudo apt upgrade -y
+echo "正在更新系统..."
+sudo apt update -y && sudo apt upgrade -y
 
-# 安装必要依赖
-echo "安装依赖..."
-sudo apt install -y curl git build-essential
+# 安装基本依赖
+echo "正在安装必需的依赖..."
+sudo apt install -y git curl build-essential
 
-# 安装 Node.js (LTS 版本)
-echo "安装 Node.js..."
-curl -sL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+# 安装 Node.js（如果未安装）
+echo "正在安装 Node.js..."
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt install -y nodejs
 
-# 克隆 Uptime Kuma 仓库
-echo "克隆 Uptime Kuma 仓库..."
-git clone https://github.com/louislam/uptime-kuma.git
-cd uptime-kuma
+# 下载 ServerStatus 源代码
+echo "正在下载 ServerStatus..."
+cd /opt
+sudo git clone https://github.com/mikferris/ServerStatus.git
+cd ServerStatus
 
-# 安装 NPM 依赖
-echo "安装 NPM 依赖..."
-npm install --production
+# 安装 Node.js 依赖
+echo "正在安装依赖..."
+sudo npm install
 
-# 启动 Uptime Kuma
-echo "启动 Uptime Kuma..."
-nohup node server/server.js > uptime-kuma.log 2>&1 &
+# 设置配置文件
+echo "正在设置配置文件..."
+cat <<EOL > config.json
+{
+  "port": 3000,
+  "hostname": "localhost",
+  "update_interval": 2000,
+  "monitoring_interval": 10000
+}
+EOL
 
-# 提示访问地址
-echo "Uptime Kuma 已启动！访问地址： http://<你的服务器IP>:3001"
-echo "登录后可以在右上角选择简体中文作为界面语言。"
+# 启动 ServerStatus
+echo "正在启动 ServerStatus..."
+sudo npm start &
 
-# 提示设置 pm2 开机自启
-echo "你可以使用 pm2 确保 Uptime Kuma 在服务器重启后自动启动。"
-echo "安装 pm2 并设置自启..."
+# 安装 PM2 以便自动启动
+echo "正在安装 PM2..."
 sudo npm install -g pm2
-pm2 start server/server.js --name uptime-kuma
+pm2 start npm --name "serverstatus" -- start
 pm2 startup
 pm2 save
 
-echo "安装完成！Uptime Kuma 会在服务器重启后自动启动。"
+echo "安装完成！访问：http://<你的VPSIP>:3000 查看 ServerStatus"
