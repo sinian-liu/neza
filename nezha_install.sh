@@ -1,46 +1,41 @@
 #!/bin/bash
 
 # 更新系统
-apt update -y
-apt upgrade -y
+echo "更新系统..."
+sudo apt update && sudo apt upgrade -y
 
-# 安装依赖
-apt install -y curl git build-essential golang
+# 安装必要依赖
+echo "安装依赖..."
+sudo apt install -y curl git build-essential
 
-# 创建项目目录
-mkdir -p /root/nezha
+# 安装 Node.js (LTS 版本)
+echo "安装 Node.js..."
+curl -sL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+sudo apt install -y nodejs
 
-# 克隆 GitHub 仓库
-cd /root/nezha
-git clone https://github.com/naiba/nezha.git .
+# 克隆 Uptime Kuma 仓库
+echo "克隆 Uptime Kuma 仓库..."
+git clone https://github.com/louislam/uptime-kuma.git
+cd uptime-kuma
 
-# 切换到源码目录
-cd /root/nezha
+# 安装 NPM 依赖
+echo "安装 NPM 依赖..."
+npm install --production
 
-# 获取 Go 模块
-go mod tidy
+# 启动 Uptime Kuma
+echo "启动 Uptime Kuma..."
+nohup node server/server.js > uptime-kuma.log 2>&1 &
 
-# 修改源码中的 GitHub 登录验证逻辑，确保使用本地用户名和密码
-# 编辑源码，注释掉 GitHub OAuth 相关代码部分
+# 提示访问地址
+echo "Uptime Kuma 已启动！访问地址： http://<你的服务器IP>:3001"
+echo "登录后可以在右上角选择简体中文作为界面语言。"
 
-# 编译 Nezha 面板服务
-cd cmd/dashboard
-go build -o nezha-server .
+# 提示设置 pm2 开机自启
+echo "你可以使用 pm2 确保 Uptime Kuma 在服务器重启后自动启动。"
+echo "安装 pm2 并设置自启..."
+sudo npm install -g pm2
+pm2 start server/server.js --name uptime-kuma
+pm2 startup
+pm2 save
 
-# 设置数据库和初始化（此处替换成你想要的用户名和密码）
-echo "Creating database configuration..."
-./nezha-server --init --username 346506686 --password 52169038
-
-# 启动 Nezha 面板
-./nezha-server
-
-# 打印面板登录信息
-echo "Nezha Panel has been installed and started!"
-echo "Access it at: http://<your-server-ip>:8080"
-echo "Use the following credentials to login:"
-echo "Username: 346506686"
-echo "Password: 52169038"
-
-# 开放 8080 端口
-ufw allow 8080
-ufw reload
+echo "安装完成！Uptime Kuma 会在服务器重启后自动启动。"
