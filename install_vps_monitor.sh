@@ -1,81 +1,64 @@
 #!/bin/bash
 
-# 确保脚本在 root 用户下运行
-if [[ $EUID -ne 0 ]]; then
-    echo "本脚本需要以 root 用户运行" 
-    exit 1
-fi
+# 1. 更新系统
+echo "更新系统..."
+sudo apt-get update && sudo apt-get upgrade -y
 
-# 安装依赖
-echo "安装基础依赖..."
-apt update && apt upgrade -y
-apt install -y git python3 python3-pip python3-venv nginx curl
+# 2. 安装基本依赖
+echo "安装基本依赖..."
+sudo apt-get install -y python3-pip python3-dev build-essential nginx git
 
-# 克隆 GitHub 仓库（公开仓库）
-echo "克隆 GitHub 仓库..."
-git clone https://github.com/YOUR_GITHUB_USERNAME/vps-monitor.git /opt/vps-monitor
-cd /opt/vps-monitor
-
-# 设置 Python 虚拟环境
-echo "创建并激活 Python 虚拟环境..."
-python3 -m venv venv
-source venv/bin/activate
-
-# 安装 Python 依赖
+# 3. 安装 Flask 和其他依赖
 echo "安装 Python 依赖..."
-cat <<EOL > requirements.txt
-Flask==2.1.1
-requests==2.26.0
-gunicorn==20.1.0
-EOL
-pip install -r requirements.txt
+pip3 install flask gunicorn
 
-# 配置 Nginx
+# 4. 克隆项目到 /opt 目录
+echo "克隆项目到 /opt/vps-monitor..."
+cd /opt
+git clone https://github.com/YOUR_GITHUB_USERNAME/vps-monitor.git
+
+# 5. 配置 Nginx
 echo "配置 Nginx..."
-cat <<EOL > /etc/nginx/sites-available/vps-monitor
+sudo cp /opt/vps-monitor/nginx/vps-monitor.conf /etc/nginx/sites-available/vps-monitor
+sudo ln -s /etc/nginx/sites-available/vps-monitor /etc/nginx/sites-enabled/
+
+# 配置 Nginx 以代理 Flask 应用
+echo "配置 Nginx 代理设置..."
+sudo bash -c 'cat > /etc/nginx/sites-available/vps-monitor <<EOF
 server {
     listen 80;
-    server_name your_domain_or_ip;
+    server_name _;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;  # 假设应用运行在 8080 端口
+        proxy_pass http://127.0.0.1:5000;  # 确保指向 Flask 应用的端口
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
+
+    error_log /var/log/nginx/error.log;
+    access_log /var/log/nginx/access.log;
 }
-EOL
+EOF'
 
-# 创建符号链接
-ln -s /etc/nginx/sites-available/vps-monitor /etc/nginx/sites-enabled/
+# 6. 检查防火墙设置并允许 HTTP 流量
+echo "检查并配置防火墙..."
+sudo ufw allow 'Nginx Full'
+sudo ufw enable
 
-# 重启 Nginx
-echo "重启 Nginx 服务..."
-systemctl restart nginx
+# 7. 启动 Flask 应用
+echo "启动 Flask 应用..."
+cd /opt/vps-monitor
+python3 app.py &  # 后台运行 Flask 应用
 
-# 配置 Systemd 服务
-echo "配置 Systemd 服务..."
-cat <<EOL > /etc/systemd/system/vps-monitor.service
-[Unit]
-Description=VPS Monitor Application
-After=network.target
+# 8. 重启 Nginx 以加载新配置
+echo "重启 Nginx..."
+sudo systemctl restart nginx
 
-[Service]
-User=www-data
-WorkingDirectory=/opt/vps-monitor
-ExecStart=/opt/vps-monitor/venv/bin/gunicorn -b 0.0.0.0:8080 app:app
-Restart=always
+# 9. 确保 Nginx 和 Flask 启动成功
+echo "检查 Nginx 状态..."
+sudo systemctl status nginx
 
-[Install]
-WantedBy=multi-user.target
-EOL
-
-# 启动服务
-echo "启动 VPS Monitor 服务..."
-systemctl enable vps-monitor
-systemctl start vps-monitor
-
-# 输出成功信息
-echo "安装完成！"
-echo "访问您的 Web 界面查看监控信息： http://your_domain_or_ip"
+# 10. 提示完成
+echo "安装完成！请访问您的服务器 IP 来查看监控信息。"
