@@ -1,56 +1,70 @@
 #!/bin/bash
 
-# 更新系统并安装依赖
-echo "Updating system and installing dependencies..."
-sudo apt update
-sudo apt install -y git golang mysql-server make
+# 更新系统
+echo "更新系统..."
+sudo apt update -y
+sudo apt upgrade -y
 
-# 克隆哪吒面板的仓库
-echo "Cloning Nezha Panel repository..."
+# 安装 Go 环境
+echo "安装 Go 语言环境..."
+sudo apt install -y golang-go
+
+# 安装 MySQL（如果未安装）
+echo "安装 MySQL 数据库..."
+sudo apt install -y mysql-server
+
+# 安装其他依赖
+echo "安装必要依赖..."
+sudo apt install -y git curl
+
+# 获取 Nezha 面板代码
+echo "获取 Nezha 面板代码..."
+cd ~
 git clone https://github.com/naiba/nezha.git
 cd nezha
 
-# 编译面板
-echo "Building Nezha Panel..."
-make
+# 安装依赖
+echo "安装项目依赖..."
+go mod tidy
 
 # 提示用户输入用户名和密码
-echo "Please enter a username for the admin account:"
-read -p "Username: " username
-echo "Please enter a password for the admin account:"
-read -sp "Password: " password
+read -p "请输入管理员用户名: " username
+read -sp "请输入管理员密码: " password
 echo
 
-# 配置数据库连接（可以选择 MySQL 或 SQLite）
-echo "Setting up database and configuration..."
-# 这里假设您使用的是 MySQL 数据库，您可以根据需要修改为 SQLite
-mysql -u root -e "CREATE DATABASE nezha;"
-
-# 修改 config.json 文件以设置用户名和密码
-cat > config.json <<EOL
+# 创建数据库和配置文件
+echo "创建数据库配置文件..."
+cat > config.json <<EOF
 {
-  "auth": {
-    "method": "local",  # 使用本地认证方式
-    "username": "$username",  # 用户名
-    "password": "$password"  # 密码
-  },
-  "database": {
-    "type": "mysql",
-    "host": "localhost",
-    "port": 3306,
-    "username": "root",
-    "password": "",
-    "dbname": "nezha"
-  }
+    "server": "0.0.0.0",
+    "port": "8080",
+    "database": {
+        "type": "mysql",
+        "host": "localhost",
+        "port": "3306",
+        "username": "root",
+        "password": "",
+        "dbname": "nezha"
+    }
 }
-EOL
+EOF
+
+# 编译项目
+echo "开始编译 Nezha 面板..."
+go build -o nezha-server ./cmd/dashboard
 
 # 启动 Nezha 面板
-echo "Starting Nezha Panel..."
+echo "启动 Nezha 面板..."
 ./nezha-server &
 
-# 提示用户面板的网址
-IP_ADDRESS=$(hostname -I | awk '{print $1}')
-echo "Nezha Panel has been installed and started successfully!"
-echo "You can access it at http://$IP_ADDRESS:8080"
-echo "Use the username and password you just created to log in."
+# 提示用户访问网址
+echo "Nezha 面板已启动!"
+echo "你可以通过以下地址访问面板："
+echo "http://$(curl -s ifconfig.me):8080"
+
+# 提示用户使用刚刚创建的用户名和密码登录
+echo "使用以下凭证登录："
+echo "用户名: $username"
+echo "密码: $password"
+
+echo "安装完成!"
