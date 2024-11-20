@@ -1,59 +1,46 @@
 #!/bin/bash
 
-# 1. 更新并安装必要的依赖
-echo "更新系统和安装必要的依赖..."
-apt-get update -y
-apt-get upgrade -y
-apt-get install -y golang-go git make build-essential
+# 更新系统
+apt update -y
+apt upgrade -y
 
-# 2. 设置 Go 环境变量
-echo "设置 Go 环境变量..."
-echo "export GOPATH=\$HOME/go" >> ~/.bashrc
-echo "export PATH=\$PATH:/usr/local/go/bin:\$GOPATH/bin" >> ~/.bashrc
-source ~/.bashrc
+# 安装依赖
+apt install -y curl git build-essential golang
 
-# 3. 下载 Nezha 面板源码
-echo "克隆 Nezha 面板源码..."
-cd /root
-git clone https://github.com/naiba/nezha.git
-cd nezha
+# 创建项目目录
+mkdir -p /root/nezha
 
-# 4. 安装并配置 Go 依赖
-echo "安装并配置 Go 依赖..."
+# 克隆 GitHub 仓库
+cd /root/nezha
+git clone https://github.com/naiba/nezha.git .
+
+# 切换到源码目录
+cd /root/nezha
+
+# 获取 Go 模块
 go mod tidy
 
-# 5. 编译 Nezha 面板服务
-echo "编译 Nezha 面板服务..."
+# 修改源码中的 GitHub 登录验证逻辑，确保使用本地用户名和密码
+# 编辑源码，注释掉 GitHub OAuth 相关代码部分
+
+# 编译 Nezha 面板服务
 cd cmd/dashboard
 go build -o nezha-server .
 
-# 6. 配置 Nezha 面板
-echo "创建数据库和配置文件..."
-echo "请输入管理员用户名:"
-read admin_user
-echo "请输入管理员密码:"
-read admin_password
+# 设置数据库和初始化（此处替换成你想要的用户名和密码）
+echo "Creating database configuration..."
+./nezha-server --init --username 346506686 --password 52169038
 
-# 初始化 Nezha 面板
-./nezha-server -admin-user="$admin_user" -admin-password="$admin_password"
-
-# 7. 设置文件权限
-echo "设置文件权限..."
-chmod +x ./nezha-server
-
-# 8. 启动 Nezha 面板服务
-echo "启动 Nezha 面板..."
+# 启动 Nezha 面板
 ./nezha-server
 
-# 9. 防火墙设置
-echo "设置防火墙，允许访问 8080 端口..."
+# 打印面板登录信息
+echo "Nezha Panel has been installed and started!"
+echo "Access it at: http://<your-server-ip>:8080"
+echo "Use the following credentials to login:"
+echo "Username: 346506686"
+echo "Password: 52169038"
+
+# 开放 8080 端口
 ufw allow 8080
 ufw reload
-
-# 10. 提示用户访问面板
-echo "Nezha 面板已成功启动！"
-echo "你可以通过以下地址访问 Nezha 面板："
-echo "http://$(hostname -I | awk '{print $1}'):8080"
-echo "使用以下凭证登录："
-echo "用户名: $admin_user"
-echo "密码: $admin_password"
