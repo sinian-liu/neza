@@ -1,168 +1,138 @@
 #!/bin/bash
-# 云监控平台一键安装脚本
 
-# 安装所需软件
-echo "正在安装必要的软件包..."
-apt update
-apt install -y python3 python3-pip sqlite3 nginx git
+echo "开始安装监控系统..."
 
-# 创建项目目录
-mkdir -p /opt/cloud-monitor
-cd /opt/cloud-monitor
+# 更新系统
+sudo apt update -y && sudo apt upgrade -y
 
-# 初始化后端代码
-echo "初始化后端代码..."
-cat > /opt/cloud-monitor/app.py << 'EOF'
-from flask import Flask, jsonify, request
-import sqlite3
+# 安装必要软件
+echo "安装依赖软件..."
+sudo apt install -y python3 python3-pip sqlite3 curl unzip
+
+# 安装 Netdata（用于监控性能）
+echo "安装 Netdata..."
+bash <(curl -Ss https://my-netdata.io/kickstart.sh) --dont-wait
+
+# 配置 Python 环境
+echo "安装 Python 依赖..."
+pip3 install flask flask-sqlalchemy requests
+
+# 创建监控文件夹
+mkdir -p /opt/server_monitor
+cd /opt/server_monitor
+
+# 下载前端和后端代码
+echo "下载监控系统代码..."
+cat <<EOF > app.py
+from flask import Flask, render_template, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+import os
+import subprocess
 import time
 
 app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///monitor.db'
+db = SQLAlchemy(app)
 
-# 数据库初始化
-DATABASE = '/opt/cloud-monitor/data.db'
+# 数据库模型
+class Server(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)
+    ip = db.Column(db.String(50), nullable=False)
+    country = db.Column(db.String(50), nullable=False)
+    virtualization = db.Column(db.String(50), nullable=False)
+    uptime = db.Column(db.Integer, default=0)  # 运行时间（天）
+    traffic_in = db.Column(db.Float, default=0.0)
+    traffic_out = db.Column(db.Float, default=0.0)
+    load = db.Column(db.Float, default=0.0)
+    packet_loss = db.Column(db.Float, default=0.0)
 
-def init_db():
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS servers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                location TEXT,
-                virtualization TEXT,
-                uptime INTEGER DEFAULT 0,
-                traffic_in REAL DEFAULT 0,
-                traffic_out REAL DEFAULT 0,
-                load REAL DEFAULT 0,
-                packet_loss REAL DEFAULT 0
-            )
-        ''')
-        conn.commit()
+# 创建数据库
+with app.app_context():
+    db.create_all()
 
-@app.route('/api/servers', methods=['GET', 'POST'])
-def manage_servers():
-    if request.method == 'GET':
-        with sqlite3.connect(DATABASE) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM servers')
-            servers = cursor.fetchall()
-        return jsonify(servers)
+@app.route('/')
+def index():
+    servers = Server.query.all()
+    return render_template('index.html', servers=servers)
 
-    if request.method == 'POST':
-        data = request.json
-        with sqlite3.connect(DATABASE) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO servers (name, location, virtualization, uptime, traffic_in, traffic_out, load, packet_loss)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (data['name'], data['location'], data['virtualization'], data['uptime'],
-                  data['traffic_in'], data['traffic_out'], data['load'], data['packet_loss']))
-            conn.commit()
-        return jsonify({"status": "success"}), 201
+@app.route('/add_server', methods=['POST'])
+def add_server():
+    data = request.get_json()
+    new_server = Server(
+        name=data['name'],
+        ip=data['ip'],
+        country=data['country'],
+        virtualization=data['virtualization'],
+        uptime=data.get('uptime', 0)
+    )
+    db.session.add(new_server)
+    db.session.commit()
+    return jsonify({'message': 'Server added successfully!'})
+
+@app.route('/update_server', methods=['POST'])
+def update_server():
+    data = request.get_json()
+    server = Server.query.get(data['id'])
+    if server:
+        server.traffic_in = data['traffic_in']
+        server.traffic_out = data['traffic_out']
+        server.load = data['load']
+        server.packet_loss = data['packet_loss']
+        db.session.commit()
+        return jsonify({'message': 'Server updated successfully!'})
+    return jsonify({'error': 'Server not found!'}), 404
 
 if __name__ == '__main__':
-    init_db()
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=8080)
 EOF
 
-# 初始化前端代码
-echo "初始化前端代码..."
-mkdir -p /opt/cloud-monitor/static
-cat > /opt/cloud-monitor/static/index.html << 'EOF'
+cat <<EOF > templates/index.html
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>云监控平台</title>
-    <style>
-        body { font-family: Arial, sans-serif; background-color: #333; color: #fff; margin: 0; padding: 0; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        th, td { border: 1px solid #444; padding: 10px; text-align: center; }
-        th { background-color: #555; }
-        tr:nth-child(even) { background-color: #444; }
-        .container { width: 90%; margin: 0 auto; }
-    </style>
+    <title>Server Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <h1>云监控平台</h1>
-        <table>
-            <thead>
-                <tr>
-                    <th>名称</th>
-                    <th>位置</th>
-                    <th>虚拟化</th>
-                    <th>运行时间（天）</th>
-                    <th>流量进</th>
-                    <th>流量出</th>
-                    <th>负载</th>
-                    <th>丢包率</th>
-                </tr>
-            </thead>
-            <tbody id="server-table">
-            </tbody>
-        </table>
-    </div>
-    <script>
-        async function fetchServers() {
-            const response = await fetch('/api/servers');
-            const servers = await response.json();
-            const table = document.getElementById('server-table');
-            table.innerHTML = '';
-            servers.forEach(server => {
-                const row = `<tr>
-                    <td>${server[1]}</td>
-                    <td>${server[2]}</td>
-                    <td>${server[3]}</td>
-                    <td>${server[4]}</td>
-                    <td>${server[5].toFixed(2)} GB</td>
-                    <td>${server[6].toFixed(2)} GB</td>
-                    <td>${server[7]}</td>
-                    <td>${server[8].toFixed(2)}%</td>
-                </tr>`;
-                table.innerHTML += row;
-            });
-        }
-
-        setInterval(fetchServers, 5000); // 每5秒刷新一次
-        fetchServers();
-    </script>
+<div class="container mt-4">
+    <h1>服务器监控面板</h1>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>名称</th>
+                <th>IP 地址</th>
+                <th>国家</th>
+                <th>虚拟化</th>
+                <th>运行天数</th>
+                <th>流量 (入/出)</th>
+                <th>负载</th>
+                <th>丢包率</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for server in servers %}
+            <tr>
+                <td>{{ server.name }}</td>
+                <td>{{ server.ip }}</td>
+                <td>{{ server.country }}</td>
+                <td>{{ server.virtualization }}</td>
+                <td>{{ server.uptime }}</td>
+                <td>{{ server.traffic_in }} / {{ server.traffic_out }}</td>
+                <td>{{ server.load }}</td>
+                <td>{{ server.packet_loss }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 </body>
 </html>
 EOF
 
-# 安装 Python 包
-echo "安装 Python 依赖..."
-pip3 install flask
-
-# 启动后端服务
-echo "启动后端服务..."
-nohup python3 /opt/cloud-monitor/app.py > /dev/null 2>&1 &
-
-# 配置 Nginx
-echo "配置 Nginx..."
-cat > /etc/nginx/sites-available/cloud-monitor << 'EOF'
-server {
-    listen 8080;
-    server_name _;
-    root /opt/cloud-monitor/static;
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:5000/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    location / {
-        index index.html;
-    }
-}
-EOF
-
-ln -s /etc/nginx/sites-available/cloud-monitor /etc/nginx/sites-enabled/
-nginx -t && systemctl restart nginx
-
-echo "部署完成！访问 http://<你的服务器IP>:8080 查看监控平台。"
+# 启动服务
+echo "启动监控系统..."
+python3 app.py &
+echo "监控系统已启动，请访问 http://<服务器IP>:8080 查看。"
