@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPS 监控</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>VPS 监控</h1>
+    <a href="{{ url_for('add_vps') }}">添加新的 VPS</a>
+    <table>
+        <thead>
+            <tr>
+                <th>名称</th>
+                <th>IP 地址</th>
+                <th>运行天数</th>
+                <th>流量</th>
+                <th>虚拟化类型</th>
+                <th>丢包率</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for vps in vps_list %}
+            <tr>
+                <td>{{ vps.name }}</td>
+                <td>{{ vps.ip_address }}</td>
+                <td>{{ vps.uptime_days }}</td>
+                <td>{{ vps.traffic }}</td>
+                <td>{{ vps.virtualization }}</td>
+                <td>{{ vps.packet_loss }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
